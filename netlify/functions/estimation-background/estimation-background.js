@@ -129,14 +129,71 @@ async function appelerClaude(donnees, dvf) {
     messages.push({ role: "assistant", content: data.content });
   }
 
-  const rapport = (texte.match(/<rapport>([\s\S]*?)<\/rapport>/) || [])[1]?.trim();
-  const syntheseBrute = (texte.match(/<synthese>([\s\S]*?)<\/synthese>/) || [])[1]?.trim();
-  let synthese = null;
-  try {
-    synthese = JSON.parse(syntheseBrute.replace(/```json|```/g, "").trim());
-  } catch (_) { /* synthèse illisible : l'agence reçoit quand même le texte brut */ }
+  const rapport = (texte.match(/<rapport>([\s\S]*?)<\/rapport>/) || [])[1]?.trim() || texte;
 
-  return { rapport: rapport || texte, synthese };
+  // 1er essai : lire le JSON placé entre <synthese> et </synthese>
+  let synthese = null;
+  const brute = (texte.match(/<synthese>([\s\S]*?)(<\/synthese>|$)/) || [])[1] || "";
+  const debut = brute.indexOf("{"), fin = brute.lastIndexOf("}");
+  if (debut !== -1 && fin > debut) {
+    try { synthese = JSON.parse(brute.slice(debut, fin + 1)); } catch (_) { /* on passe au 2e essai */ }
+  }
+
+  // 2e essai : on demande la synthèse à part, dans un format imposé (ne peut pas être illisible)
+  if (!synthese || !(Number(synthese.valeur_centrale) > 0)) {
+    console.error("Synthèse non lisible dans la réponse, extraction séparée. Début :", brute.slice(0, 300));
+    synthese = await extraireSynthese(rapport).catch((e) => { console.error("Extraction synthèse :", e); return null; });
+  }
+
+  return { rapport, synthese };
+}
+
+const OUTIL_SYNTHESE = {
+  name: "enregistrer_synthese",
+  description: "Enregistre la synthèse de l'estimation destinée au propriétaire.",
+  input_schema: {
+    type: "object",
+    properties: {
+      valeur_basse: { type: "integer", description: "Valeur basse en euros" },
+      valeur_centrale: { type: "integer", description: "Valeur centrale en euros" },
+      valeur_haute: { type: "integer", description: "Valeur haute en euros" },
+      prix_m2_bas: { type: "integer", description: "Prix au m² bas en euros" },
+      prix_m2_haut: { type: "integer", description: "Prix au m² haut en euros" },
+      niveau_confiance: { type: "integer", description: "Niveau de confiance sur 100" },
+      secteur: { type: "string", description: "Quartier ou micro-secteur retenu" },
+      points_forts: { type: "array", items: { type: "string" }, description: "2 à 3 phrases courtes, langage simple" },
+      points_attention: { type: "array", items: { type: "string" }, description: "1 à 3 phrases courtes, formulées avec tact" },
+      informations_a_verifier: { type: "array", items: { type: "string" }, description: "1 à 3 éléments qu'une visite permettrait de préciser" },
+    },
+    required: ["valeur_basse", "valeur_centrale", "valeur_haute", "prix_m2_bas", "prix_m2_haut",
+      "niveau_confiance", "secteur", "points_forts", "points_attention", "informations_a_verifier"],
+  },
+};
+
+async function extraireSynthese(rapport) {
+  const rep = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODELE,
+      max_tokens: 1500,
+      tools: [OUTIL_SYNTHESE],
+      tool_choice: { type: "tool", name: "enregistrer_synthese" },
+      messages: [{
+        role: "user",
+        content: "Voici un rapport d'estimation immobilière destiné à une agence. Reprends-en fidèlement les valeurs " +
+          "(sans en inventer ni les modifier) et rédige la synthèse destinée au propriétaire, en français, " +
+          "dans un langage simple et avec tact.\n\n<rapport>\n" + rapport + "\n</rapport>",
+      }],
+    }),
+  });
+  if (!rep.ok) throw new Error(`API Anthropic ${rep.status} : ${await rep.text()}`);
+  const data = await rep.json();
+  return data.content.find((b) => b.type === "tool_use")?.input || null;
 }
 
 // ---------- Brevo ----------
