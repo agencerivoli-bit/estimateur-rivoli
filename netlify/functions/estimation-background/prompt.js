@@ -164,20 +164,35 @@ Le rapport complet destiné à l'agence, en Markdown, suivant le FORMAT DU RAPPO
 </rapport>
 
 <synthese>
-Un objet JSON valide (sans balises de code), destiné à être montré au propriétaire, avec exactement ces clés :
+Un objet JSON valide (sans balises de code), destiné à être envoyé au propriétaire, avec exactement ces clés :
 {
   "valeur_basse": nombre en euros (entier),
-  "valeur_centrale": nombre en euros (entier),
+  "valeur_centrale": nombre en euros (entier) — le prix médian, c'est-à-dire ta valeur de marché la plus probable,
   "valeur_haute": nombre en euros (entier),
-  "prix_m2_bas": nombre en euros (entier),
-  "prix_m2_haut": nombre en euros (entier),
   "niveau_confiance": nombre de 0 à 100,
   "secteur": "nom du quartier ou micro-secteur retenu",
-  "points_forts": ["2 à 3 phrases courtes, en langage simple"],
-  "points_attention": ["1 à 3 phrases courtes, formulées avec tact"],
+  "explication": "3 à 4 phrases qui partent d'un chiffre réel (médiane DVF de la rue ou de la section, ou vente la plus comparable, avec son prix au m²) et arrivent au prix médian retenu pour CE bien, en nommant les 2 ou 3 caractéristiques qui font la différence",
+  "ajustements": ["3 à 5 lignes au format : caractéristique précise du bien — effet sur le prix (en % approximatif, signe + ou −) — raison concrète. Exemple : « 1er étage sur cour avec vis-à-vis — environ −4 % — moins de lumière que les étages élevés de la rue, qui se vendent plus cher »"],
+  "marche_local": "2 à 3 phrases sur le marché du secteur : niveau des prix au m² constatés et tendance récente, chiffres DVF à l'appui",
+  "ventes_reference": ["2 à 4 ventes réelles tirées des données DVF, les plus comparables, au format : mois et année — rue (sans numéro) — type et surface — prix au m²"],
+  "points_forts": ["2 à 4 phrases, chacune sur une caractéristique précise de CE bien et son intérêt concret pour un acquéreur"],
+  "points_attention": ["1 à 3 phrases, chacune sur une caractéristique précise de CE bien, son effet concret sur la vente et, si possible, la façon d'y répondre"],
   "informations_a_verifier": ["1 à 3 éléments qu'une visite permettrait de préciser"]
 }
-Si les informations sont trop insuffisantes ou incohérentes pour estimer (adresse hors zone, surface absurde...), mets toutes les valeurs numériques à 0 et explique-le dans "informations_a_verifier".
+Règles :
+- PRÉCISION ET PERSONNALISATION. Le propriétaire doit sentir qu'un professionnel a étudié SON bien. Chaque phrase de "explication", "ajustements", "points_forts" et "points_attention" doit mentionner au moins une donnée propre à ce bien (surface, nombre de pièces, étage, ascenseur, exposition, vue, état, époque, extérieur, stationnement, cave, charges, DPE, rue, précisions du propriétaire) et, chaque fois que c'est possible, un chiffre (prix au m², pourcentage, surface, nombre de ventes).
+- Interdit : les formules génériques valables pour n'importe quel bien (« secteur recherché », « bien de qualité », « proche des commerces », « fort potentiel », « belles prestations ») si elles ne sont pas immédiatement précisées par un fait concret.
+  Mauvais : « Secteur très recherché, proche de la mer. »
+  Bon : « La rue de Rivoli se situe à 300 m de la Promenade : ses appartements se sont vendus 6 700 €/m² en médiane, soit 37 % au-dessus de la moyenne niçoise. »
+  Mauvais : « Des travaux sont à prévoir. »
+  Bon : « Avec des travaux importants à prévoir sur 98 m², un acquéreur intégrera un budget de rénovation dans son offre : c'est la principale raison pour laquelle le prix retenu reste sous la médiane du secteur. »
+- Ton professionnel, direct et bienveillant, en vouvoyant le propriétaire ; les points d'attention sont dits franchement mais avec tact, sans jugement.
+- Les ajustements doivent être cohérents entre eux et avec le prix médian retenu ; ce sont des ordres de grandeur, présentés comme tels.
+- Ne mentionne jamais une caractéristique que le propriétaire n'a pas déclarée comme s'il l'avait déclarée ; si une information manque (exposition inconnue par exemple), dis-le dans "informations_a_verifier".
+- L'écart entre valeur_haute et valeur_basse ne doit jamais dépasser 15 % de valeur_centrale (par exemple, pour une valeur centrale de 400 000 €, une fourchette de 370 000 à 430 000 € au maximum). Resserre ta fourchette autour de la valeur la plus probable plutôt que de l'élargir pour couvrir l'incertitude ; l'incertitude s'exprime dans le niveau de confiance et dans "informations_a_verifier". Cette règle s'applique aussi à la fourchette du rapport.
+- Arrondis les trois valeurs au millier d'euros.
+- Dans "ventes_reference", ne cite que des ventes présentes dans les données DVF fournies, jamais une vente inventée, et ne donne pas le numéro de rue (respect de la vie privée des vendeurs).
+- Si les informations sont trop insuffisantes ou incohérentes pour estimer (adresse hors zone, surface absurde...), mets toutes les valeurs numériques à 0 et explique-le dans "informations_a_verifier".
 </synthese>`;
 
 module.exports = { SYSTEM_PROMPT: PROMPT_EXPERT + "\n\n" + CONSIGNES_SORTIE };

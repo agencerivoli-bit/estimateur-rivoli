@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Estimer mon bien à Nice et sur la Côte d'Azur — L'Agence Rivoli</title>
 <meta name="description" content="Recevez par email une estimation de votre appartement ou de votre maison à Nice et sur la Côte d'Azur, établie à partir du marché de votre quartier.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/polices.css">
 <style>
   :root {
     --marine: #0b1f3a;
@@ -117,6 +115,12 @@
   .consentement { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; color: var(--gris); }
   .consentement input { margin-top: 5px; accent-color: var(--marine); width: 18px; height: 18px; flex: none; }
 
+  .exemple { font-size: 14px; color: var(--gris); margin: 6px 0 0; font-style: italic; }
+  .consentement a { color: var(--marine); }
+  .mentions { background: var(--marine-2); color: #aab3c4; font-size: 13px; line-height: 1.6; padding: 28px clamp(24px, 4vw, 48px); }
+  .mentions p { margin: 0 0 6px; max-width: 110ch; }
+  .mentions a { color: var(--or); }
+  .mentions .liens { margin-top: 10px; }
   .piege { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
   .envoi { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
@@ -189,15 +193,19 @@
           </div>
           <div class="c4">
             <label for="adresse">Numéro et rue</label>
-            <input type="text" id="adresse" name="adresse" autocomplete="street-address" required maxlength="200" placeholder="12 rue de France">
+            <input type="text" id="adresse" name="adresse" autocomplete="street-address" required maxlength="200" aria-describedby="ex-adresse">
+            <p class="exemple" id="ex-adresse">Exemple : 12 rue de France</p>
           </div>
           <div class="c2">
             <label for="code_postal">Code postal</label>
-            <input type="text" id="code_postal" name="code_postal" inputmode="numeric" autocomplete="postal-code" required pattern="0[46][0-9]{3}|83[0-9]{3}|98000" maxlength="5" placeholder="06000">
+            <input type="text" id="code_postal" name="code_postal" inputmode="numeric" autocomplete="postal-code" required pattern="0[46][0-9]{3}|83[0-9]{3}|98000" maxlength="5" aria-describedby="ex-cp">
+            <p class="exemple" id="ex-cp">5 chiffres, par exemple 06000</p>
           </div>
           <div class="c4">
             <label for="commune">Commune</label>
-            <input type="text" id="commune" name="commune" autocomplete="address-level2" required maxlength="80" placeholder="Nice">
+            <input type="text" id="commune" name="commune" autocomplete="address-level2" required maxlength="80" list="communes" aria-describedby="ex-commune">
+            <datalist id="communes"></datalist>
+            <p class="exemple" id="ex-commune">Remplie automatiquement d'après le code postal</p>
           </div>
           <div class="c2">
             <label for="surface">Surface Carrez (m²)</label>
@@ -273,7 +281,8 @@
         <div class="grille">
           <div class="c2">
             <label for="etage">Étage</label>
-            <input type="number" id="etage" name="etage" required min="0" max="40" placeholder="0 = rez-de-chaussée">
+            <input type="number" id="etage" name="etage" required min="0" max="40" aria-describedby="ex-etage">
+            <p class="exemple" id="ex-etage">Rez-de-chaussée : indiquez 0</p>
           </div>
           <div class="c2">
             <label for="etages_immeuble">Étages de l'immeuble <span class="facultatif">facultatif</span></label>
@@ -325,7 +334,8 @@
           </div>
           <div class="c6">
             <label for="precisions">Ce qu'il faut savoir sur votre bien <span class="facultatif">facultatif</span></label>
-            <textarea id="precisions" name="precisions" maxlength="1000" placeholder="Hauteur sous plafond, cachet, dernier étage, travaux votés en copropriété, bruit, climatisation…"></textarea>
+            <p class="exemple" id="ex-precisions" style="margin:0 0 8px">Par exemple : hauteur sous plafond, cachet, dernier étage, travaux votés en copropriété, bruit, climatisation.</p>
+            <textarea id="precisions" name="precisions" maxlength="1000" aria-describedby="ex-precisions"></textarea>
           </div>
         </div>
       </fieldset>
@@ -361,7 +371,7 @@
           </div>
           <div class="c6 consentement">
             <input type="checkbox" id="consentement" name="consentement" value="oui" required>
-            <label for="consentement" style="margin:0">J'accepte que L'Agence Rivoli utilise ces informations pour estimer mon bien et me recontacter. L'estimation est préparée à l'aide d'un outil d'intelligence artificielle, puis transmise par email. Je peux demander la suppression de mes données à tout moment.</label>
+            <label for="consentement" style="margin:0">J'accepte que L'Agence Rivoli utilise ces informations pour estimer mon bien et me recontacter. L'estimation est préparée à l'aide d'un outil d'intelligence artificielle, puis transmise par email. Je peux demander la suppression de mes données à tout moment (voir la <a href="/confidentialite.html" target="_blank">politique de confidentialité</a>).</label>
           </div>
         </div>
       </fieldset>
@@ -380,12 +390,35 @@
     </section>
   </main>
 </div>
+<footer class="mentions">
+    <p><strong>L'Agence Rivoli</strong> est une marque d'AR.CAM.GE IMMOBILIER, SAS au capital de 30 000 €, RCS Nice 798 374 161, siège : 75 rue de France, 06000 Nice. Tél. 04 93 62 94 92.</p>
+    <p>Carte professionnelle « Transaction sur immeubles et fonds de commerce » n° 06052015000002443, délivrée par la CCI Nice Côte d'Azur.
+    Responsabilité civile professionnelle : QBE, police n° QRCAI000680.
+    <span id="garantie">Garantie financière : à compléter.</span></p>
+    <p class="liens"><a href="/mentions-legales.html">Mentions légales</a> · <a href="/confidentialite.html">Politique de confidentialité</a></p>
+</footer>
 
 <script>
 (function () {
   var form = document.getElementById("formulaire");
   var bouton = document.getElementById("bouton");
   var erreur = document.getElementById("erreur");
+
+  // Commune remplie automatiquement à partir du code postal (service public geo.api.gouv.fr)
+  var cp = document.getElementById("code_postal");
+  var commune = document.getElementById("commune");
+  var liste = document.getElementById("communes");
+  cp.addEventListener("input", async function () {
+    var v = cp.value.replace(/\D/g, "");
+    if (v.length !== 5) return;
+    try {
+      var r = await fetch("https://geo.api.gouv.fr/communes?codePostal=" + v + "&fields=nom");
+      var res = await r.json();
+      liste.innerHTML = res.map(function (c) { return '<option value="' + c.nom.replace(/"/g, "") + '">'; }).join("");
+      if (res.length === 1) commune.value = res[0].nom;
+      else if (res.length > 1 && !commune.value) commune.focus();
+    } catch (e) { /* service indisponible : saisie manuelle */ }
+  });
 
   form.addEventListener("submit", async function (e) {
     e.preventDefault();

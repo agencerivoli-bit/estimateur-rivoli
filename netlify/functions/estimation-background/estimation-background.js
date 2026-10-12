@@ -154,19 +154,21 @@ const OUTIL_SYNTHESE = {
   input_schema: {
     type: "object",
     properties: {
-      valeur_basse: { type: "integer", description: "Valeur basse en euros" },
-      valeur_centrale: { type: "integer", description: "Valeur centrale en euros" },
-      valeur_haute: { type: "integer", description: "Valeur haute en euros" },
-      prix_m2_bas: { type: "integer", description: "Prix au m² bas en euros" },
-      prix_m2_haut: { type: "integer", description: "Prix au m² haut en euros" },
+      valeur_basse: { type: "integer", description: "Valeur basse en euros, arrondie au millier" },
+      valeur_centrale: { type: "integer", description: "Prix médian (valeur la plus probable) en euros, arrondi au millier" },
+      valeur_haute: { type: "integer", description: "Valeur haute en euros, arrondie au millier. Écart haute-basse ≤ 15 % de la valeur centrale" },
       niveau_confiance: { type: "integer", description: "Niveau de confiance sur 100" },
       secteur: { type: "string", description: "Quartier ou micro-secteur retenu" },
-      points_forts: { type: "array", items: { type: "string" }, description: "2 à 3 phrases courtes, langage simple" },
-      points_attention: { type: "array", items: { type: "string" }, description: "1 à 3 phrases courtes, formulées avec tact" },
+      explication: { type: "string", description: "3 à 4 phrases qui partent d'un chiffre réel du rapport (médiane de la rue ou du secteur, vente comparable) et arrivent au prix médian de CE bien en nommant les caractéristiques qui font la différence" },
+      ajustements: { type: "array", items: { type: "string" }, description: "3 à 5 lignes : caractéristique précise du bien — effet en % approximatif (+ ou −) — raison concrète, repris du rapport" },
+      marche_local: { type: "string", description: "2 à 3 phrases sur le marché du secteur, chiffres à l'appui" },
+      ventes_reference: { type: "array", items: { type: "string" }, description: "2 à 4 ventes réelles citées dans le rapport, sans numéro de rue : mois et année — rue — type et surface — prix au m²" },
+      points_forts: { type: "array", items: { type: "string" }, description: "2 à 4 phrases, chacune sur une caractéristique précise de CE bien, avec un chiffre si possible ; jamais de formule générique" },
+      points_attention: { type: "array", items: { type: "string" }, description: "1 à 3 phrases, chacune sur une caractéristique précise de CE bien et son effet concret sur la vente, avec tact" },
       informations_a_verifier: { type: "array", items: { type: "string" }, description: "1 à 3 éléments qu'une visite permettrait de préciser" },
     },
-    required: ["valeur_basse", "valeur_centrale", "valeur_haute", "prix_m2_bas", "prix_m2_haut",
-      "niveau_confiance", "secteur", "points_forts", "points_attention", "informations_a_verifier"],
+    required: ["valeur_basse", "valeur_centrale", "valeur_haute", "niveau_confiance", "secteur", "explication",
+      "ajustements", "marche_local", "ventes_reference", "points_forts", "points_attention", "informations_a_verifier"],
   },
 };
 
@@ -186,7 +188,9 @@ async function extraireSynthese(rapport) {
       messages: [{
         role: "user",
         content: "Voici un rapport d'estimation immobilière destiné à une agence. Reprends-en fidèlement les valeurs " +
-          "(sans en inventer ni les modifier) et rédige la synthèse destinée au propriétaire, en français, " +
+          "(sans en inventer ni les modifier ; ne cite que des ventes présentes dans le rapport) et rédige la synthèse " +
+          "destinée au propriétaire, en français. Sois précis et personnalisé : chaque phrase doit citer une caractéristique de CE bien " +
+          "et, si possible, un chiffre du rapport ; aucune formule générique. Si la fourchette du rapport dépasse 15 % de la valeur centrale, resserre-la autour de la valeur centrale. " +
           "dans un langage simple et avec tact.\n\n<rapport>\n" + rapport + "\n</rapport>",
       }],
     }),
@@ -194,6 +198,36 @@ async function extraireSynthese(rapport) {
   if (!rep.ok) throw new Error(`API Anthropic ${rep.status} : ${await rep.text()}`);
   const data = await rep.json();
   return data.content.find((b) => b.type === "tool_use")?.input || null;
+}
+
+// ---------- Garde-fou sur la fourchette ----------
+// Écart maximal entre valeur haute et valeur basse, en proportion de la valeur centrale.
+const ECART_MAX = 0.15;
+const arrondir = (n) => Math.round(n / 1000) * 1000;
+
+function encadrerFourchette(s, surface) {
+  if (!s) return s;
+  let c = Number(s.valeur_centrale), b = Number(s.valeur_basse), h = Number(s.valeur_haute);
+  if (!(c > 0)) return s;
+  if (!(b > 0) || b > c) b = c * (1 - ECART_MAX / 2);
+  if (!(h > 0) || h < c) h = c * (1 + ECART_MAX / 2);
+  // Si l'écart dépasse le maximum, on le réduit en gardant la même asymétrie autour de la valeur centrale
+  const ecart = h - b, max = c * ECART_MAX;
+  if (ecart > max) {
+    const k = max / ecart;
+    b = c - (c - b) * k;
+    h = c + (h - c) * k;
+  }
+  s.valeur_basse = arrondir(b);
+  s.valeur_centrale = arrondir(c);
+  s.valeur_haute = arrondir(h);
+  // Prix au m² calculés sur la surface déclarée, pour rester cohérents avec les trois valeurs
+  if (surface > 0) {
+    s.prix_m2_bas = Math.round(s.valeur_basse / surface);
+    s.prix_m2_median = Math.round(s.valeur_centrale / surface);
+    s.prix_m2_haut = Math.round(s.valeur_haute / surface);
+  }
+  return s;
 }
 
 // ---------- Brevo ----------
@@ -238,29 +272,58 @@ function cadreEmail(contenu) {
     <div style="background:#0b1f3a;padding:28px 32px;color:#c9a24a;font-size:22px;letter-spacing:.06em">L'Agence Rivoli</div>
     <div style="padding:32px;color:#1B2740;font-size:16px;line-height:1.6">${contenu}</div>
     <div style="padding:20px 32px;border-top:1px solid #e3e6ec;color:#5b6475;font-size:13px">
-      L'Agence Rivoli — 75 rue de France, 06000 Nice — ${TEL_AGENCE}
+      L'Agence Rivoli — 75 rue de France, 06000 Nice — ${TEL_AGENCE}<br>
+      <span style="font-size:11px;line-height:1.5">AR.CAM.GE IMMOBILIER, SAS au capital de 30 000 €, RCS Nice 798 374 161.
+      Carte professionnelle Transaction n° 06052015000002443 délivrée par la CCI Nice Côte d'Azur.
+      RC professionnelle QBE n° QRCAI000680.</span>
     </div>
   </div></div>`;
 }
 
 function emailClient(d, s) {
-  const liste = (arr) => (arr || []).map((x) => `<li>${echapperHtml(x)}</li>`).join("");
+  const liste = (arr) => (arr || []).map((x) => `<li style="margin-bottom:6px">${echapperHtml(x)}</li>`).join("");
+  const titre = (t) => `<p style="font-family:Georgia,serif;font-size:18px;color:#0b1f3a;margin:28px 0 8px">${t}</p>`;
+  const case3 = (libelle, valeur, m2, accent) => `
+    <td width="33%" style="padding:14px 8px;text-align:center;vertical-align:top;${accent ? "background:#0b1f3a;color:#fff" : "background:#f5f6f8;color:#0b1f3a"}">
+      <div style="font-size:13px;${accent ? "color:#c9a24a" : "color:#5b6475"}">${libelle}</div>
+      <div style="font-size:${accent ? 24 : 19}px;margin:6px 0 4px">${euros(valeur)}</div>
+      ${m2 ? `<div style="font-size:13px;${accent ? "color:#d9dde5" : "color:#5b6475"}">${euros(m2)} / m²</div>` : ""}
+    </td>`;
   return cadreEmail(`
     <p>Bonjour ${echapperHtml(d.prenom)},</p>
-    <p>Merci pour votre demande. Voici une première estimation de votre ${echapperHtml(d.type.toLowerCase())}
-    situé ${echapperHtml(d.adresse)}, ${echapperHtml(d.commune)}, établie à partir des informations que vous nous avez transmises et des données du marché local.</p>
-    <div style="border:1px solid #c9a24a;padding:20px 24px;margin:24px 0">
-      <div style="font-size:14px;color:#5b6475">Fourchette de valeur estimée</div>
-      <div style="font-size:26px;color:#0b1f3a;margin:6px 0">${euros(s.valeur_basse)} – ${euros(s.valeur_haute)}</div>
-      <div style="font-size:15px">Soit entre ${euros(s.prix_m2_bas)} et ${euros(s.prix_m2_haut)} par m²${s.secteur ? `, secteur ${echapperHtml(s.secteur)}` : ""}.</div>
+    <p>Merci pour votre demande. Voici l'estimation de votre ${echapperHtml(d.type.toLowerCase())}
+    de ${echapperHtml(d.surface)} m² situé ${echapperHtml(d.adresse)}, ${echapperHtml(d.commune)}${s.secteur ? ` (secteur ${echapperHtml(s.secteur)})` : ""}.
+    Elle repose sur les ventes réellement signées dans votre rue et votre quartier, et sur les caractéristiques que vous nous avez décrites.</p>
+
+    <table width="100%" cellspacing="6" cellpadding="0" style="margin:24px 0 8px;border-collapse:separate">
+      <tr>
+        ${case3("Prix bas", s.valeur_basse, s.prix_m2_bas, false)}
+        ${case3("Prix médian", s.valeur_centrale, s.prix_m2_median, true)}
+        ${case3("Prix haut", s.valeur_haute, s.prix_m2_haut, false)}
+      </tr>
+    </table>
+    <p style="font-size:14px;color:#5b6475;margin-top:0">Le prix médian correspond à la valeur la plus probable de votre bien sur le marché actuel.</p>
+
+    ${s.explication ? `${titre("Comment nous avons établi cette valeur")}<p>${echapperHtml(s.explication)}</p>` : ""}
+    ${s.ajustements?.length ? `${titre("Ce qui distingue votre bien")}
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:4px 0 8px">
+        ${s.ajustements.map((a) => `<tr><td style="padding:10px 0;border-bottom:1px solid #e3e6ec">${echapperHtml(a)}</td></tr>`).join("")}
+      </table>
+      <p style="font-size:13px;color:#5b6475">Ordres de grandeur, appliqués aux prix constatés dans votre secteur.</p>` : ""}
+    ${s.marche_local ? `${titre("Le marché de votre secteur")}<p>${echapperHtml(s.marche_local)}</p>` : ""}
+    ${s.ventes_reference?.length ? `${titre("Ventes récentes de référence")}<ul style="padding-left:20px">${liste(s.ventes_reference)}</ul>
+      <p style="font-size:13px;color:#5b6475">Source : base DVF des ventes immobilières publiée par l'administration fiscale.</p>` : ""}
+    ${s.points_forts?.length ? `${titre("Ce qui valorise votre bien")}<ul style="padding-left:20px">${liste(s.points_forts)}</ul>` : ""}
+    ${s.points_attention?.length ? `${titre("Ce qui peut peser sur le prix")}<ul style="padding-left:20px">${liste(s.points_attention)}</ul>` : ""}
+    ${s.informations_a_verifier?.length ? `${titre("Ce qu'une visite permettrait de préciser")}<ul style="padding-left:20px">${liste(s.informations_a_verifier)}</ul>` : ""}
+
+    <div style="border-left:3px solid #c9a24a;padding:4px 0 4px 16px;margin:28px 0">
+      <p style="margin:0">Pour transformer cette estimation en avis de valeur précis et gratuit, je vous propose une visite de votre bien.
+      Répondez simplement à cet email ou appelez-moi au <a href="tel:+33601007116" style="color:#0b1f3a">${TEL_AGENCE}</a>.</p>
     </div>
-    ${s.points_forts?.length ? `<p><strong>Ce qui valorise votre bien</strong></p><ul>${liste(s.points_forts)}</ul>` : ""}
-    ${s.points_attention?.length ? `<p><strong>Ce qui peut peser sur le prix</strong></p><ul>${liste(s.points_attention)}</ul>` : ""}
-    ${s.informations_a_verifier?.length ? `<p><strong>Ce qu'une visite permettrait de préciser</strong></p><ul>${liste(s.informations_a_verifier)}</ul>` : ""}
-    <p style="font-size:14px;color:#5b6475">Cette estimation est indicative : elle a été réalisée à distance, sans visite du bien,
-    et ne constitue pas un avis de valeur. Seule une visite permet de tenir compte de la luminosité, de la vue réelle,
-    de la qualité des prestations et de l'état de la copropriété.</p>
-    <p>Pour obtenir un avis de valeur précis et gratuit, répondez simplement à cet email ou appelez-moi au ${TEL_AGENCE}.</p>
+
+    <p style="font-size:13px;color:#5b6475">Estimation indicative établie sans visite. Elle ne remplace pas un avis de valeur :
+    seule une visite permet de tenir compte de la luminosité, de la vue réelle, de la qualité des prestations et de l'état de la copropriété.</p>
     <p>${SIGNATURE}</p>`);
 }
 
@@ -274,7 +337,7 @@ function emailAgence(d, resultat, envoyeAuClient) {
     <p>${statut}</p>
     <p><strong>Contact :</strong> ${echapperHtml(d.prenom)} ${echapperHtml(d.nom)} — ${echapperHtml(d.email)} — ${echapperHtml(d.telephone)}<br>
     <strong>Projet :</strong> ${echapperHtml(d.projet || "non précisé")}</p>
-    ${s ? `<p><strong>Synthèse :</strong> ${euros(s.valeur_basse)} / ${euros(s.valeur_centrale)} / ${euros(s.valeur_haute)} — confiance ${s.niveau_confiance}/100</p>` : "<p><strong>Synthèse illisible</strong> : voir le rapport ci-dessous.</p>"}
+    ${s ? `<p><strong>Envoyé au propriétaire :</strong> bas ${euros(s.valeur_basse)} — médian ${euros(s.valeur_centrale)} — haut ${euros(s.valeur_haute)} (écart ${Math.round((s.valeur_haute - s.valeur_basse) / s.valeur_centrale * 100)} %) — confiance ${s.niveau_confiance}/100</p>` : "<p><strong>Synthèse illisible</strong> : voir le rapport ci-dessous.</p>"}
     <p><strong>Données saisies</strong></p>
     <pre style="white-space:pre-wrap;font-size:13px;background:#f5f6f8;padding:12px">${echapperHtml(formaterDonnees(d))}</pre>
     <hr style="border:none;border-top:1px solid #c9a24a;margin:24px 0">
@@ -319,7 +382,7 @@ exports.handler = async (event) => {
     });
     const resultat = await appelerClaude(d, dvf);
     resultat.dvf = dvf;
-    const s = resultat.synthese;
+    const s = encadrerFourchette(resultat.synthese, Number(d.surface));
     const estimationExploitable = s && Number(s.valeur_centrale) > 0;
     const envoiAuto = process.env.ENVOI_AUTO_CLIENT === "true" && estimationExploitable;
 
